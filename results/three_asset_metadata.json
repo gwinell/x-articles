@@ -1,0 +1,20 @@
+{
+  "downloaded_utc": "2026-09-27T19:52:06.722498+00:00",
+  "period_start": "2021-01-27 00:00:00+00:00",
+  "period_end": "2026-09-26 00:00:00+00:00",
+  "assets": {
+    "BTC": "BTCUSDT",
+    "SOL": "SOLUSDT",
+    "INJ": "INJUSDT"
+  },
+  "weights": {
+    "BTC": 0.5,
+    "SOL": 0.3,
+    "INJ": 0.2
+  },
+  "monthly_contributions": 68,
+  "fee": 0.001,
+  "slippage": 0.0005,
+  "staking_assumption": "SOL and INJ rewards accrue daily and compound; no validator commission or unbonding delay modeled in this first scenario pass",
+  "lending_assumption": "USDT reserve compounds daily at scenario rate"
+}

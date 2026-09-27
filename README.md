@@ -64,3 +64,5 @@ The runner uses the saved data files when present; if they are missing, it reque
 ## Scope and limitations
 
 All assets are simulated at daily OHLCV prices, with simplified slippage and no modelling of order-book liquidity, partial fills, exchange outages, taxes, withdrawals or USDT depegging. Five-year windows overlap and are not independent observations. The repository is published for reproducibility and discussion, **not as investment advice**.
+
+`three_asset_scenarios.py` tests a BTC/SOL/INJ portfolio with 50/30/20 weights from January 2021 under multiple staking and lending-rate scenarios.
