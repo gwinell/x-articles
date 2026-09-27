@@ -1,0 +1,17 @@
+{
+  "generated_utc": "2026-09-27T20:35:55.482067+00:00",
+  "requested_start": "2021-09-27 00:00:00+00:00",
+  "requested_end": "2026-09-26 00:00:00+00:00",
+  "common_last_date": "2026-09-25 00:00:00+00:00",
+  "source_stocks": "Nasdaq public historical JSON endpoint; Yahoo Finance/yfinance timed out in this environment",
+  "source_etf_distributions": "DividendSmart split-adjusted historical distribution pages for VOO, VTI and VT",
+  "source_crypto": "existing Binance Spot CSV files from parent research",
+  "stock_total_return": "raw Close + explicit dividend cash reinvestment; adjusted close not used",
+  "stock_fee": 0.0,
+  "stock_slippage": 0.0005,
+  "crypto_fee": 0.001,
+  "crypto_slippage": 0.0005,
+  "fractional_shares": true,
+  "dividend_reinvestment": "same asset at close on ex-dividend date",
+  "limitations": "US market timestamps are not identical to UTC crypto daily close; no taxes, funding, borrow, or jurisdiction-specific fees"
+}
