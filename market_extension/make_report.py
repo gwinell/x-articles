@@ -70,7 +70,7 @@ These overlapping windows are sensitivity tests, not independent observations an
 
 - `backtest_market.py` — downloader, simulator, metrics and CSV export.
 - `make_outputs.py` — Matplotlib/Seaborn PNGs and GIF.
-- `tests/test_market_extension.py` — five automated checks; latest run: **5 passed**.
+- `tests/test_market_extension.py` — seven automated checks; latest run: **7 passed**.
 - `data/` — downloaded stock/ETF OHLC and the used market files.
 - `results/market_comparison_summary.csv` — machine-readable main table.
 - `results/period_start_comparison.csv` — start-date robustness.

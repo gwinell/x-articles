@@ -13,6 +13,7 @@ DATA=ROOT/'data'; RESULTS=ROOT/'results'; FIG=RESULTS/'figures'
 DATA.mkdir(exist_ok=True); RESULTS.mkdir(exist_ok=True); FIG.mkdir(exist_ok=True)
 START=pd.Timestamp('2021-09-27',tz='UTC'); REQUESTED_END=pd.Timestamp('2026-09-26',tz='UTC'); WARM=pd.Timestamp('2020-01-01',tz='UTC')
 FUNDING=100.; FEE_STOCK=.0; SLIP_STOCK=.0005; FEE_CRYPTO=.001; SLIP_CRYPTO=.0005
+MIN_TRADE_USD=1.0
 TICKERS=['VOO','VTI','VT','AAPL','MSFT','NVDA','GOOGL']
 PORTFOLIOS={
  'A_Crypto_DCA':{'BTC':.6,'ETH':.4}, 'B_S&P500_VOO':{'VOO':1.}, 'C_Total_US_VTI':{'VTI':1.}, 'D_Global_VT':{'VT':1.},
@@ -78,12 +79,15 @@ def prev_signal(asset,dt,data,window):
     return bool(pd.notna(sma) and x.close.loc[p]>sma)
 
 def trade_buy(dt,a,amount,data,units,cash,deals):
+    if amount < MIN_TRADE_USD: return cash
     price=float(data[a].loc[dt,'open']); slip=SLIP_CRYPTO if a in ('BTC','ETH') else SLIP_STOCK; fee=FEE_CRYPTO if a in ('BTC','ETH') else FEE_STOCK
     ep=price*(1+slip); q=amount/(ep*(1+fee)); notional=q*ep; f=notional*fee; cash-=notional+f; units[a]+=q; deals.append([dt,a,'BUY',q,ep,notional,f,q*price*slip,'trade']); return cash
 
 def trade_sell(dt,a,q,data,units,cash,deals):
     price=float(data[a].loc[dt,'open']); slip=SLIP_CRYPTO if a in ('BTC','ETH') else SLIP_STOCK; fee=FEE_CRYPTO if a in ('BTC','ETH') else FEE_STOCK
-    ep=price*(1-slip); notional=q*ep; f=notional*fee; cash+=notional-f; units[a]-=q; deals.append([dt,a,'SELL',q,ep,notional,f,q*price*slip,'trade']); return cash
+    ep=price*(1-slip); notional=q*ep
+    if notional < MIN_TRADE_USD: return cash
+    f=notional*fee; cash+=notional-f; units[a]-=q; deals.append([dt,a,'SELL',q,ep,notional,f,q*price*slip,'trade']); return cash
 
 def simulate(name,weights,data,rebalance=False,sma_window=None,start_date=START,end_date=REQUESTED_END):
     cal,last=trading_calendar(data,start_date,end_date); scheduled=execution_deposit_dates(cal,start_date,end_date); due={x[1]:x[0] for x in scheduled}; units={a:0. for a in weights}; cash=0.; deals=[]; dividends=[]; daily=[]; contributions=[]; prev=0.; tw=1.; peak=1.; next_reb=[]
@@ -103,22 +107,31 @@ def simulate(name,weights,data,rebalance=False,sma_window=None,start_date=START,
             div=float(data[a].loc[dt,'dividends']) if dt in data[a].index else 0.
             if div>0 and units[a]>0:
                 amount=units[a]*div; units[a]+=amount/float(data[a].loc[dt,'close']); dividends.append([dt,a,units[a]*0+amount,amount/float(data[a].loc[dt,'close'])])
+        # Signals are frozen before the deposit and before any order is sent.
+        # This is the only signal state used for today's next-bar execution.
+        bull_portfolio=None; bull_single={}
+        if sma_window:
+            if is_portfolio_sma:
+                pos=syn.index.get_loc(dt) if dt in syn.index else None
+                bull_portfolio=bool(pos is not None and pos>0 and pd.notna(syn_sma.iloc[pos-1]) and syn.iloc[pos-1]>syn_sma.iloc[pos-1])
+            else:
+                bull_single={a:prev_signal(a,dt,data,sma_window) for a in weights}
         if dt in due:
             cash+=FUNDING; contributions.append((due[dt],FUNDING))
             for a,w in weights.items():
-                bull=True
-                if sma_window and not is_portfolio_sma: bull=prev_signal(a,dt,data,sma_window)
+                bull=True if not sma_window else (bull_portfolio if is_portfolio_sma else bull_single[a])
                 if bull: cash=trade_buy(dt,a,FUNDING*w,data,units,cash,deals)
         if sma_window:
             if is_portfolio_sma:
-                pos=syn.index.get_loc(dt) if dt in syn.index else None; bull=bool(pos is not None and pos>0 and pd.notna(syn_sma.iloc[pos-1]) and syn.iloc[pos-1]>syn_sma.iloc[pos-1])
+                bull=bull_portfolio
                 if not bull and sum(units.values())>0:
                     for a in list(weights): cash=trade_sell(dt,a,units[a],data,units,cash,deals)
                 elif bull and cash>0:
-                    for a,w in weights.items(): cash=trade_buy(dt,a,cash*w,data,units,cash,deals)
+                    available=cash
+                    for a,w in weights.items(): cash=trade_buy(dt,a,available*w,data,units,cash,deals)
             else:
                 for a in weights:
-                    bull=prev_signal(a,dt,data,sma_window)
+                    bull=bull_single[a]
                     if not bull and units[a]>0: cash=trade_sell(dt,a,units[a],data,units,cash,deals)
                     elif bull and units[a]==0 and cash>0: cash=trade_buy(dt,a,cash,data,units,cash,deals)
         if rebalance and dt in next_reb:

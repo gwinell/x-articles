@@ -44,6 +44,27 @@ def test_trade_costs_are_recorded():
     t=pd.read_csv(RES/'trades_A_Crypto_DCA_SMA200.csv')
     assert t.fee.sum()>0 and t.slippage.sum()>0
     assert (t.notional>=0).all()
+    assert (t.notional>=bm.MIN_TRADE_USD-1e-9).all()
+
+def test_crypto_sma_never_buys_on_negative_signal_and_keeps_60_40():
+    b=pd.read_csv(ROOT.parent/'data/btcusdt_1d.csv',parse_dates=['open_time']).set_index('open_time')
+    e=pd.read_csv(ROOT.parent/'data/ethusdt_1d.csv',parse_dates=['open_time']).set_index('open_time')
+    idx=b.index.intersection(e.index); base=idx[idx>=pd.Timestamp('2021-09-27',tz='UTC')][0]
+    synthetic=.6*b.close.loc[idx]/b.close.loc[base]+.4*e.close.loc[idx]/e.close.loc[base]
+    sma=synthetic.rolling(200).mean(); t=pd.read_csv(RES/'trades_A_Crypto_DCA_SMA200.csv',parse_dates=['date'])
+    for d in t.loc[t.side=='BUY','date'].drop_duplicates():
+        pos=synthetic.index.get_loc(d); assert pos>0 and pd.notna(sma.iloc[pos-1]) and synthetic.iloc[pos-1]>sma.iloc[pos-1]
+    buys=t[t.side=='BUY'].copy(); buys['spent']=buys.notional+buys.fee
+    for d,g in buys.groupby('date'):
+        if set(g.asset)=={'BTC','ETH'}:
+            assert abs(g.loc[g.asset=='BTC','spent'].sum()/g.spent.sum()-.6)<1e-8
+            assert abs(g.loc[g.asset=='ETH','spent'].sum()/g.spent.sum()-.4)<1e-8
+
+def test_primary_contributions_equal_6000():
+    for p in RES.glob('equity_*.csv'):
+        if any(x in p.name for x in ['start2020','start2021','start2022']): continue
+        x=pd.read_csv(p)
+        assert abs(x.deposit.sum()-6000)<1e-8
 
 def test_final_value_matches_daily_mark_to_market():
     # For each journal, the final equity must be positive and all units nonnegative.

@@ -20,11 +20,11 @@ The principal risk distinction is drawdown. Crypto DCA reached -75.42%; VOO DCA 
 |C_Total_US_VTI|$6,000.00|$9,394.55|$3,394.55|56.58%|17.99%|-25.38%|$0.00|$3.00|60|$238.87|$-0.00|
 |D_Global_VT|$6,000.00|$9,269.13|$3,269.13|54.49%|17.44%|-26.29%|$0.00|$3.00|60|$361.34|$0.00|
 |E_VOO_BTC|$6,000.00|$9,997.55|$3,997.55|66.63%|20.55%|-34.34%|$1.20|$3.00|120|$195.36|$0.00|
-|E_VOO_BTC_annual_rebalance|$6,000.00|$10,339.29|$4,339.29|72.32%|21.94%|-34.34%|$2.49|$4.29|129|$214.71|$-0.00|
+|E_VOO_BTC_annual_rebalance|$6,000.00|$10,339.29|$4,339.29|72.32%|21.94%|-34.34%|$2.49|$4.29|128|$214.71|$-0.00|
 |F_VOO_BTC_ETH|$6,000.00|$9,537.25|$3,537.25|58.95%|18.61%|-46.07%|$2.40|$3.00|180|$146.52|$-0.00|
 |F_VOO_BTC_ETH_annual_rebalance|$6,000.00|$9,816.67|$3,816.67|63.61%|19.79%|-46.07%|$3.95|$4.51|192|$161.91|$-0.00|
 |G_VT_BTC|$6,000.00|$9,783.60|$3,783.60|63.06%|19.66%|-37.10%|$1.20|$3.00|120|$289.07|$-0.00|
-|G_VT_BTC_annual_rebalance|$6,000.00|$10,166.80|$4,166.80|69.45%|21.24%|-37.10%|$2.59|$4.39|129|$322.12|$-0.00|
+|G_VT_BTC_annual_rebalance|$6,000.00|$10,166.80|$4,166.80|69.45%|21.24%|-37.10%|$2.59|$4.39|128|$322.12|$-0.00|
 |AAPL_only|$6,000.00|$10,797.95|$4,797.95|79.97%|23.74%|-33.34%|$0.00|$3.00|60|$90.31|$-0.00|
 |MSFT_only|$6,000.00|$8,978.15|$2,978.15|49.64%|16.14%|-36.73%|$0.00|$3.00|60|$156.67|$0.00|
 |NVDA_only|$6,000.00|$32,389.18|$26,389.18|439.82%|72.94%|-66.15%|$0.00|$3.00|60|$112.43|$-0.00|
@@ -33,8 +33,8 @@ The principal risk distinction is drawdown. Crypto DCA reached -75.42%; VOO DCA 
 |B_S&P500_VOO_SMA200|$6,000.00|$8,406.46|$2,406.46|40.11%|13.46%|-22.68%|$0.00|$33.64|75|$187.25|$-0.00|
 |C_Total_US_VTI_SMA150|$6,000.00|$8,209.05|$2,209.05|36.82%|12.50%|-20.64%|$0.00|$48.35|84|$147.42|$-0.00|
 |C_Total_US_VTI_SMA200|$6,000.00|$8,165.68|$2,165.68|36.09%|12.29%|-21.59%|$0.00|$37.30|75|$165.69|$-0.00|
-|A_Crypto_DCA_SMA150|$6,000.00|$11,980.87|$5,980.87|99.68%|28.09%|-46.66%|$199.01|$99.50|824|$0.00|$0.00|
-|A_Crypto_DCA_SMA200|$6,000.00|$9,823.45|$3,823.45|63.72%|19.82%|-38.33%|$111.59|$55.79|670|$0.00|$0.00|
+|A_Crypto_DCA_SMA150|$6,000.00|$12,573.36|$6,573.36|109.56%|30.12%|-47.43%|$208.11|$104.05|156|$0.00|$-0.00|
+|A_Crypto_DCA_SMA200|$6,000.00|$10,112.13|$4,112.13|68.54%|21.02%|-44.07%|$107.20|$53.60|108|$0.00|$-0.00|
 
 
 ## Methodology
@@ -86,7 +86,7 @@ These overlapping windows are sensitivity tests, not independent observations an
 
 - `backtest_market.py` — downloader, simulator, metrics and CSV export.
 - `make_outputs.py` — Matplotlib/Seaborn PNGs and GIF.
-- `tests/test_market_extension.py` — five automated checks; latest run: **5 passed**.
+- `tests/test_market_extension.py` — seven automated checks; latest run: **7 passed**.
 - `data/` — downloaded stock/ETF OHLC and the used market files.
 - `results/market_comparison_summary.csv` — machine-readable main table.
 - `results/period_start_comparison.csv` — start-date robustness.
