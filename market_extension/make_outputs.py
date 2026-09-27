@@ -18,12 +18,14 @@ def save(fig,name):
 
 summary=pd.read_csv(RES/'market_comparison_summary.csv')
 primary={r.portfolio:load_equity(r.portfolio) for r in summary.itertuples()}
+independent={l:load_equity(l) for l in ['A_Crypto_DCA_independent_SMA150','A_Crypto_DCA_independent_SMA200']}
 
-groups=[('Crypto vs trend',['A_Crypto_DCA','A_Crypto_DCA_SMA150','A_Crypto_DCA_SMA200']),('ETF portfolios',['B_S&P500_VOO','C_Total_US_VTI','D_Global_VT']),('Mixed portfolios',['A_Crypto_DCA','E_VOO_BTC','E_VOO_BTC_annual_rebalance','F_VOO_BTC_ETH','G_VT_BTC'])]
+groups=[('Crypto vs trend',['A_Crypto_DCA','A_Crypto_DCA_SMA150','A_Crypto_DCA_SMA200','A_Crypto_DCA_independent_SMA150','A_Crypto_DCA_independent_SMA200']),('ETF portfolios',['B_S&P500_VOO','C_Total_US_VTI','D_Global_VT']),('Mixed portfolios',['A_Crypto_DCA','E_VOO_BTC','E_VOO_BTC_annual_rebalance','F_VOO_BTC_ETH','G_VT_BTC'])]
 for title,labels in groups:
     fig,ax=plt.subplots(figsize=(11,6)); ax.set_facecolor(BG)
     for l in labels:
-        ax.plot(primary[l].index,primary[l].equity,label=l.replace('_',' '),lw=2.4)
+        x=primary[l] if l in primary else independent[l]
+        ax.plot(x.index,x.equity,label=l.replace('_',' '),lw=2.4)
     ax.axhline(6000,color='#777',lw=1,ls='--',label='Contributions ($6,000)')
     ax.set_title(title,loc='left',weight='bold'); ax.set_ylabel('Portfolio value, USD'); ax.legend(fontsize=9,ncol=2); ax.grid(alpha=.25,color=GRID); fig.autofmt_xdate(); save(fig,title.lower().replace(' ','_')+'.png')
 

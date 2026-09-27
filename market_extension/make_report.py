@@ -14,8 +14,11 @@ table='|Portfolio|Contributions|Final value|Profit|Return|XIRR|Max drawdown|Fees
 for _,r in s.iterrows(): table+=row(r)
 
 period=pd.read_csv(RES/'period_start_comparison.csv')
+ind=pd.read_csv(RES/'independent_crypto_sma_summary.csv')
 ptable='|Portfolio|Start window|Contributions|Final value|Return|Max drawdown|\n|---|---:|---:|---:|---:|---:|\n'
 for _,r in period.iterrows(): ptable+=f'|{r.portfolio}|{r.portfolio[-4:]}|{money(r.contributions)}|{money(r.final_value)}|{pct(r.return_pct)}|{pct(r.max_drawdown)}|\n'
+itable='|Strategy|Final value|Return|XIRR|Max drawdown|Trades|Costs|BTC cash|ETH cash|\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n'
+for _,r in ind.iterrows(): itable+=f'|{r.portfolio}|{money(r.final_value)}|{pct(r.return_pct)}|{pct(r.xirr)}|{pct(r.max_drawdown)}|{int(r.trades)}|{money(r.fees+r.slippage)}|{money(r.BTC_final_cash)}|{money(r.ETH_final_cash)}|\n'
 
 def get(name,col): return s.loc[s.portfolio==name,col].iloc[0]
 
@@ -66,11 +69,19 @@ The following windows use the same monthly $100 rule and common end date. Starts
 
 These overlapping windows are sensitivity tests, not independent observations and not a guarantee of future performance.
 
+## Independent SMA signals for BTC and ETH
+
+The main crypto SMA rows use one composite 60/40 portfolio signal. The following separate experiment instead applies the SMA independently to BTC and ETH. Each asset has its own USDT reserve; a bearish BTC signal cannot fund an ETH purchase.
+
+{itable}
+
+Independent SMA150 finished below the composite SMA150 but had a materially smaller drawdown. Independent SMA200 finished above the composite SMA200 and also reduced drawdown. This confirms that the signal definition itself is economically important.
+
 ## Files and reproducibility
 
 - `backtest_market.py` — downloader, simulator, metrics and CSV export.
 - `make_outputs.py` — Matplotlib/Seaborn PNGs and GIF.
-- `tests/test_market_extension.py` — seven automated checks; latest run: **7 passed**.
+- `tests/test_market_extension.py` — eight automated checks; latest run: **8 passed**.
 - `data/` — downloaded stock/ETF OHLC and the used market files.
 - `results/market_comparison_summary.csv` — machine-readable main table.
 - `results/period_start_comparison.csv` — start-date robustness.

@@ -82,11 +82,23 @@ The following windows use the same monthly $100 rule and common end date. Starts
 
 These overlapping windows are sensitivity tests, not independent observations and not a guarantee of future performance.
 
+## Independent SMA signals for BTC and ETH
+
+The main crypto SMA rows use one composite 60/40 portfolio signal. The following separate experiment instead applies the SMA independently to BTC and ETH. Each asset has its own USDT reserve; a bearish BTC signal cannot fund an ETH purchase.
+
+|Strategy|Final value|Return|XIRR|Max drawdown|Trades|Costs|BTC cash|ETH cash|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+|A_Crypto_DCA_independent_SMA150|$12,103.91|101.73%|28.52%|-36.36%|128|$275.62|$-0.00|$-0.00|
+|A_Crypto_DCA_independent_SMA200|$10,595.19|76.59%|22.95%|-37.26%|119|$239.62|$-0.00|$-0.00|
+
+
+Independent SMA150 finished below the composite SMA150 but had a materially smaller drawdown. Independent SMA200 finished above the composite SMA200 and also reduced drawdown. This confirms that the signal definition itself is economically important.
+
 ## Files and reproducibility
 
 - `backtest_market.py` — downloader, simulator, metrics and CSV export.
 - `make_outputs.py` — Matplotlib/Seaborn PNGs and GIF.
-- `tests/test_market_extension.py` — seven automated checks; latest run: **7 passed**.
+- `tests/test_market_extension.py` — eight automated checks; latest run: **8 passed**.
 - `data/` — downloaded stock/ETF OHLC and the used market files.
 - `results/market_comparison_summary.csv` — machine-readable main table.
 - `results/period_start_comparison.csv` — start-date robustness.

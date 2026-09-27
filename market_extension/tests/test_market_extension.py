@@ -66,6 +66,17 @@ def test_primary_contributions_equal_6000():
         x=pd.read_csv(p)
         assert abs(x.deposit.sum()-6000)<1e-8
 
+def test_independent_sma_uses_segregated_cash_and_own_signal():
+    for window in [150,200]:
+        label=f'A_Crypto_DCA_independent_SMA{window}'
+        x=pd.read_csv(RES/f'equity_{label}.csv')
+        assert (x[['BTC_cash','ETH_cash']]>=-1e-8).all().all()
+        t=pd.read_csv(RES/f'trades_{label}.csv',parse_dates=['date'])
+        for _,r in t[t.side=='BUY'].iterrows():
+            p=pd.read_csv(ROOT.parent/'data'/f'{r.asset.lower()}usdt_1d.csv',parse_dates=['open_time']).set_index('open_time')
+            pos=p.index.get_loc(r.date); prev=p.close.iloc[pos-1]; sma=p.close.iloc[:pos].rolling(window).mean().iloc[-1]
+            assert pd.notna(sma) and prev>sma
+
 def test_final_value_matches_daily_mark_to_market():
     # For each journal, the final equity must be positive and all units nonnegative.
     for p in RES.glob('equity_*.csv'):

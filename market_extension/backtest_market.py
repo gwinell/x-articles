@@ -150,6 +150,33 @@ def simulate(name,weights,data,rebalance=False,sma_window=None,start_date=START,
     m={'portfolio':name,'contributions':d.deposit.sum(),'final_value':d.equity.iloc[-1],'final_cash':d.cash.iloc[-1],'profit':d.equity.iloc[-1]-d.deposit.sum(),'return_pct':d.equity.iloc[-1]/d.deposit.sum()-1,'xirr':xirr(cfs),'max_drawdown':d.drawdown.min(),'fees':t.fee.sum(),'slippage':t.slippage.sum(),'trades':len(t),'dividends':dv.cash_dividend.sum() if len(dv) else 0.,'last_date':last.date(),**{f'{a}_final_units':d[f'{a}_units'].iloc[-1] for a in weights}}
     return d,t,dv,m
 
+def simulate_independent_crypto_sma(name,data,window,start_date=START,end_date=REQUESTED_END):
+    """Run BTC and ETH SMA signals independently with segregated cash.
+
+    The monthly contribution is still 60/40.  A bearish BTC signal can only
+    move BTC to BTC-USDT cash; it cannot fund an ETH purchase, and vice versa.
+    """
+    weights={'BTC':.6,'ETH':.4}; cal,last=trading_calendar(data,start_date,end_date)
+    scheduled=execution_deposit_dates(cal,start_date,end_date); due={x[1]:x[0] for x in scheduled}
+    units={a:0. for a in weights}; cash={a:0. for a in weights}; deals=[]; daily=[]; prev=0.; tw=1.; peak=1.;
+    for dt in cal:
+        bull={a:prev_signal(a,dt,data,window) for a in weights}
+        if dt in due:
+            for a,w in weights.items(): cash[a]+=FUNDING*w
+        for a in weights:
+            if not bull[a] and units[a]>0:
+                cash[a]=trade_sell(dt,a,units[a],data,units,cash[a],deals)
+            elif bull[a] and cash[a]>=MIN_TRADE_USD:
+                cash[a]=trade_buy(dt,a,cash[a],data,units,cash[a],deals)
+        total_cash=sum(cash.values()); equity=total_cash+sum(units[a]*float(data[a].loc[dt,'close']) for a in weights)
+        dep=FUNDING if dt in due else 0.; ret=(equity-dep)/prev-1 if prev>0 else 0.; tw*=1+ret; peak=max(peak,tw)
+        daily.append([dt,equity,dep,tw,tw/peak-1,total_cash,cash['BTC'],cash['ETH'],units['BTC'],units['ETH']]); prev=equity
+    cols=['date','equity','deposit','twr','drawdown','cash','BTC_cash','ETH_cash','BTC_units','ETH_units']
+    d=pd.DataFrame(daily,columns=cols).set_index('date'); t=pd.DataFrame(deals,columns=['date','asset','side','units','price','notional','fee','slippage','kind'])
+    cfs=[(x,-FUNDING) for x,_ in scheduled]+[(last,d.equity.iloc[-1])]
+    m={'portfolio':name,'contributions':d.deposit.sum(),'final_value':d.equity.iloc[-1],'final_cash':d.cash.iloc[-1],'profit':d.equity.iloc[-1]-d.deposit.sum(),'return_pct':d.equity.iloc[-1]/d.deposit.sum()-1,'xirr':xirr(cfs),'max_drawdown':d.drawdown.min(),'fees':t.fee.sum(),'slippage':t.slippage.sum(),'trades':len(t),'dividends':0.,'last_date':last.date(),'BTC_final_units':d.BTC_units.iloc[-1],'ETH_final_units':d.ETH_units.iloc[-1],'BTC_final_cash':d.BTC_cash.iloc[-1],'ETH_final_cash':d.ETH_cash.iloc[-1]}
+    return d,t,m
+
 def main():
     data={'BTC':load_crypto('BTC'),'ETH':load_crypto('ETH')}; data.update({x:load_stock(x) for x in TICKERS}); cal,last=trading_calendar(data)
     rows=[]
@@ -165,6 +192,10 @@ def main():
     w=PORTFOLIOS['A_Crypto_DCA']
     for window in [150,200]:
         label=f'A_Crypto_DCA_SMA{window}'; d,t,dv,m=simulate(label,w,data,sma_window=window); d.to_csv(RESULTS/f'equity_{label}.csv'); t.to_csv(RESULTS/f'trades_{label}.csv',index=False); dv.to_csv(RESULTS/f'dividends_{label}.csv',index=False); rows.append(m)
+    independent_rows=[]
+    for window in [150,200]:
+        label=f'A_Crypto_DCA_independent_SMA{window}'; d,t,m=simulate_independent_crypto_sma(label,data,window); d.to_csv(RESULTS/f'equity_{label}.csv'); t.to_csv(RESULTS/f'trades_{label}.csv',index=False); independent_rows.append(m)
+    pd.DataFrame(independent_rows).to_csv(RESULTS/'independent_crypto_sma_summary.csv',index=False)
     # Start-date robustness: same contribution rule, common end date, and no
     # parameter selection from these comparisons.  Absolute values are not
     # compared across windows without reporting their different contribution
