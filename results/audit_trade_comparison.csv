@@ -1,0 +1,5 @@
+asset,side,sma200_count,dca_sma200_count,same_signal_dates,rebalance_exit_count,only_sma200_vs_dca,only_dca_vs_sma200
+BTC,BUY,54,54,True,29,,
+BTC,SELL,19,19,True,19,,
+ETH,BUY,42,42,True,25,,
+ETH,SELL,14,14,True,11,,
