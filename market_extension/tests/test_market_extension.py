@@ -77,6 +77,15 @@ def test_independent_sma_uses_segregated_cash_and_own_signal():
             pos=p.index.get_loc(r.date); prev=p.close.iloc[pos-1]; sma=p.close.iloc[:pos].rolling(window).mean().iloc[-1]
             assert pd.notna(sma) and prev>sma
 
+def test_grid_variants_have_nonnegative_cash_and_real_fills():
+    for window in [100,50]:
+        label=f'A_Crypto_SMA150_grid{window}'
+        x=pd.read_csv(RES/f'equity_{label}.csv'); t=pd.read_csv(RES/f'trades_{label}.csv')
+        assert abs(x.deposit.sum()-6000)<1e-8
+        assert (x.cash>=-1e-8).all()
+        assert (t.notional>=bm.MIN_TRADE_USD-1e-9).all()
+        assert (t.kind.isin(['grid_buy','grid_sell'])).sum()>0
+
 def test_final_value_matches_daily_mark_to_market():
     # For each journal, the final equity must be positive and all units nonnegative.
     for p in RES.glob('equity_*.csv'):

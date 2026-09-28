@@ -23,7 +23,7 @@ PORTFOLIOS={
 
 def load_crypto(asset):
     p=ROOT.parent/'data'/f'{asset.lower()}usdt_1d.csv'; x=pd.read_csv(p,parse_dates=['open_time']).set_index('open_time')
-    return pd.DataFrame({'open':x.open,'close':x.close,'dividends':0.,'splits':0.},index=x.index)
+    return pd.DataFrame({'open':x.open,'high':x.high,'low':x.low,'close':x.close,'dividends':0.,'splits':0.},index=x.index)
 
 def load_stock(ticker):
     p=DATA/f'{ticker}_daily.csv'
@@ -177,6 +177,74 @@ def simulate_independent_crypto_sma(name,data,window,start_date=START,end_date=R
     m={'portfolio':name,'contributions':d.deposit.sum(),'final_value':d.equity.iloc[-1],'final_cash':d.cash.iloc[-1],'profit':d.equity.iloc[-1]-d.deposit.sum(),'return_pct':d.equity.iloc[-1]/d.deposit.sum()-1,'xirr':xirr(cfs),'max_drawdown':d.drawdown.min(),'fees':t.fee.sum(),'slippage':t.slippage.sum(),'trades':len(t),'dividends':0.,'last_date':last.date(),'BTC_final_units':d.BTC_units.iloc[-1],'ETH_final_units':d.ETH_units.iloc[-1],'BTC_final_cash':d.BTC_cash.iloc[-1],'ETH_final_cash':d.ETH_cash.iloc[-1]}
     return d,t,m
 
+def simulate_crypto_sma_grid(name,data,grid_fraction,start_date=START,end_date=REQUESTED_END,window=150,n_grids=10):
+    """Independent BTC/ETH SMA150 with a spot grid during flat/bear periods.
+
+    grid_fraction is the fraction of each asset subportfolio transferred to
+    the grid at entry (1.0 or 0.5). All subsequent deposits for that asset go
+    to the active grid. The grid range is the previous 30 completed candles;
+    levels are fixed until the SMA bullish signal closes the grid.
+    """
+    weights={'BTC':.6,'ETH':.4}; cal,last=trading_calendar(data,start_date,end_date)
+    scheduled=execution_deposit_dates(cal,start_date,end_date); due={x[1]:x[0] for x in scheduled}
+    std_units={a:0. for a in weights}; std_cash={a:0. for a in weights}; grid_units={a:0. for a in weights}; grid_cash={a:0. for a in weights}
+    grid_active={a:False for a in weights}; grid_levels={}; grid_lots={}; grid_order={}; deals=[]; daily=[]; prev=0.; tw=1.; peak=1.; grid_days={a:0 for a in weights}
+    for dt in cal:
+        bull={a:prev_signal(a,dt,data,window) for a in weights}; flat={}
+        for a in weights:
+            pos=data[a].index.get_loc(dt); p=pos-1
+            if p<30 or pd.isna(data[a].close.rolling(150).mean().iloc[p]): flat[a]=False
+            else:
+                sma=data[a].close.rolling(150).mean(); flat[a]=abs(data[a].close.iloc[p]/data[a].close.iloc[p-30]-1)<=.10 and abs(sma.iloc[p]/sma.iloc[p-30]-1)<=.05
+        if dt in due:
+            for a,w in weights.items():
+                amount=FUNDING*w
+                if grid_active[a]: grid_cash[a]+=amount
+                else: std_cash[a]+=amount
+        for a in weights:
+            op=float(data[a].loc[dt,'open'])
+            # A bullish SMA signal closes the grid before today's grid orders.
+            if grid_active[a] and bull[a]:
+                std_cash[a]+=grid_cash[a]; std_units[a]+=grid_units[a]; grid_cash[a]=0.; grid_units[a]=0.; grid_active[a]=False; grid_levels.pop(a,None); grid_lots.pop(a,None); grid_order.pop(a,None)
+                if std_cash[a]>=MIN_TRADE_USD:
+                    tmp={a:std_units[a]}; before=tmp[a]; std_cash[a]=trade_buy(dt,a,std_cash[a],data,tmp,std_cash[a],deals); std_units[a]=tmp[a]
+                    if len(deals) and deals[-1][0]==dt: deals[-1][-1]='sma_after_grid'
+            if not grid_active[a]:
+                if bull[a] and std_cash[a]>=MIN_TRADE_USD:
+                    tmp={a:std_units[a]}; std_cash[a]=trade_buy(dt,a,std_cash[a],data,tmp,std_cash[a],deals); std_units[a]=tmp[a]
+                elif not bull[a] and std_units[a]>0:
+                    tmp={a:std_units[a]}; std_cash[a]=trade_sell(dt,a,std_units[a],data,tmp,std_cash[a],deals); std_units[a]=tmp[a]
+                # Grid starts only when the asset is flat and not bullish.
+                if flat[a] and not bull[a]:
+                    total=std_cash[a]+std_units[a]*op; alloc=total*grid_fraction
+                    grid_cash[a]=std_cash[a]*grid_fraction; grid_units[a]=std_units[a]*grid_fraction
+                    std_cash[a]*=(1-grid_fraction); std_units[a]*=(1-grid_fraction)
+                    lo=float(data[a].loc[data[a].index[max(0,pos-30):pos],'low'].min()); hi=float(data[a].loc[data[a].index[max(0,pos-30):pos],'high'].max())
+                    if hi>lo and alloc>=MIN_TRADE_USD:
+                        grid_levels[a]=np.linspace(lo,hi,n_grids+1); grid_order[a]=max(alloc/(2*n_grids),MIN_TRADE_USD); grid_lots[a]={float(level):0. for level in grid_levels[a]};
+                        above=[float(level) for level in grid_levels[a] if level>op]
+                        seed=grid_units[a]/len(above) if above else grid_units[a]
+                        for level in (above if above else [float(grid_levels[a][-1])]): grid_lots[a][level]=seed
+                        grid_active[a]=True
+            else:
+                grid_days[a]+=1; levels=grid_levels[a]; lots=grid_lots[a]; order=grid_order[a]
+                # Resting orders use today's high/low; levels were known from
+                # prior candles, and buys/sells are separated by open price.
+                for level in sorted([float(x) for x in levels if x<op],reverse=True):
+                    if float(data[a].loc[dt,'low'])<=level and lots[level]<=0 and grid_cash[a]>=MIN_TRADE_USD:
+                        tmp={a:grid_units[a]}; before=tmp[a]; grid_cash[a]=trade_buy(dt,a,min(order,grid_cash[a]),data,tmp,grid_cash[a],deals); grid_units[a]=tmp[a]
+                        qty=tmp[a]-before
+                        if qty>0: lots[level]+=qty; deals[-1][-1]='grid_buy'
+                for level in sorted([float(x) for x in levels if x>op]):
+                    if float(data[a].loc[dt,'high'])>=level and lots[level]>0:
+                        tmp={a:grid_units[a]}; qty=lots[level]; grid_cash[a]=trade_sell(dt,a,qty,data,tmp,grid_cash[a],deals); grid_units[a]=tmp[a]
+                        if len(deals) and deals[-1][0]==dt: deals[-1][-1]='grid_sell'; lots[level]=0.
+        total_cash=sum(std_cash.values())+sum(grid_cash.values()); equity=total_cash+sum((std_units[a]+grid_units[a])*float(data[a].loc[dt,'close']) for a in weights); dep=FUNDING if dt in due else 0.; ret=(equity-dep)/prev-1 if prev>0 else 0.; tw*=1+ret; peak=max(peak,tw)
+        daily.append([dt,equity,dep,tw,tw/peak-1,total_cash,std_cash['BTC']+grid_cash['BTC'],std_cash['ETH']+grid_cash['ETH'],std_units['BTC']+grid_units['BTC'],std_units['ETH']+grid_units['ETH'],int(grid_active['BTC']),int(grid_active['ETH'])]); prev=equity
+    cols=['date','equity','deposit','twr','drawdown','cash','BTC_cash','ETH_cash','BTC_units','ETH_units','BTC_grid_active','ETH_grid_active']; d=pd.DataFrame(daily,columns=cols).set_index('date'); t=pd.DataFrame(deals,columns=['date','asset','side','units','price','notional','fee','slippage','kind']); cfs=[(x,-FUNDING) for x,_ in scheduled]+[(last,d.equity.iloc[-1])]
+    m={'portfolio':name,'contributions':d.deposit.sum(),'final_value':d.equity.iloc[-1],'final_cash':d.cash.iloc[-1],'profit':d.equity.iloc[-1]-d.deposit.sum(),'return_pct':d.equity.iloc[-1]/d.deposit.sum()-1,'xirr':xirr(cfs),'max_drawdown':d.drawdown.min(),'fees':t.fee.sum(),'slippage':t.slippage.sum(),'trades':len(t),'grid_trades':int(t.kind.isin(['grid_buy','grid_sell']).sum()),'last_date':last.date(),'grid_fraction':grid_fraction,'BTC_grid_days':grid_days['BTC'],'ETH_grid_days':grid_days['ETH']}
+    return d,t,m
+
 def main():
     data={'BTC':load_crypto('BTC'),'ETH':load_crypto('ETH')}; data.update({x:load_stock(x) for x in TICKERS}); cal,last=trading_calendar(data)
     rows=[]
@@ -196,6 +264,10 @@ def main():
     for window in [150,200]:
         label=f'A_Crypto_DCA_independent_SMA{window}'; d,t,m=simulate_independent_crypto_sma(label,data,window); d.to_csv(RESULTS/f'equity_{label}.csv'); t.to_csv(RESULTS/f'trades_{label}.csv',index=False); independent_rows.append(m)
     pd.DataFrame(independent_rows).to_csv(RESULTS/'independent_crypto_sma_summary.csv',index=False)
+    grid_rows=[]
+    for frac in [1.0,.5]:
+        label=f'A_Crypto_SMA150_grid{int(frac*100)}'; d,t,m=simulate_crypto_sma_grid(label,data,frac); d.to_csv(RESULTS/f'equity_{label}.csv'); t.to_csv(RESULTS/f'trades_{label}.csv',index=False); grid_rows.append(m)
+    pd.DataFrame(grid_rows).to_csv(RESULTS/'crypto_sma_grid_summary.csv',index=False)
     # Start-date robustness: same contribution rule, common end date, and no
     # parameter selection from these comparisons.  Absolute values are not
     # compared across windows without reporting their different contribution

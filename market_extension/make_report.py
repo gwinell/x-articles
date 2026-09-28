@@ -15,10 +15,13 @@ for _,r in s.iterrows(): table+=row(r)
 
 period=pd.read_csv(RES/'period_start_comparison.csv')
 ind=pd.read_csv(RES/'independent_crypto_sma_summary.csv')
+grid=pd.read_csv(RES/'crypto_sma_grid_summary.csv')
 ptable='|Portfolio|Start window|Contributions|Final value|Return|Max drawdown|\n|---|---:|---:|---:|---:|---:|\n'
 for _,r in period.iterrows(): ptable+=f'|{r.portfolio}|{r.portfolio[-4:]}|{money(r.contributions)}|{money(r.final_value)}|{pct(r.return_pct)}|{pct(r.max_drawdown)}|\n'
 itable='|Strategy|Final value|Return|XIRR|Max drawdown|Trades|Costs|BTC cash|ETH cash|\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n'
 for _,r in ind.iterrows(): itable+=f'|{r.portfolio}|{money(r.final_value)}|{pct(r.return_pct)}|{pct(r.xirr)}|{pct(r.max_drawdown)}|{int(r.trades)}|{money(r.fees+r.slippage)}|{money(r.BTC_final_cash)}|{money(r.ETH_final_cash)}|\n'
+gtable='|Variant|Grid allocation at entry|Final value|Return|XIRR|Max drawdown|Grid trades|Costs|BTC grid days|ETH grid days|\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
+for _,r in grid.iterrows(): gtable+=f'|{r.portfolio}|{pct(r.grid_fraction)}|{money(r.final_value)}|{pct(r.return_pct)}|{pct(r.xirr)}|{pct(r.max_drawdown)}|{int(r.grid_trades)}|{money(r.fees+r.slippage)}|{int(r.BTC_grid_days)}|{int(r.ETH_grid_days)}|\n'
 
 def get(name,col): return s.loc[s.portfolio==name,col].iloc[0]
 
@@ -77,11 +80,19 @@ The main crypto SMA rows use one composite 60/40 portfolio signal. The following
 
 Independent SMA150 finished below the composite SMA150 but had a materially smaller drawdown. Independent SMA200 finished above the composite SMA200 and also reduced drawdown. This confirms that the signal definition itself is economically important.
 
+## Grid variants during flat periods
+
+During a flat period, all future monthly deposits for the relevant asset are sent to the active grid. The 100% variant transfers the full current asset subportfolio to the grid; the 50% variant transfers half and leaves the other half under SMA150. The grid uses the previous 30 completed candles, 10 fixed levels, and separate BTC/ETH bots. A bullish SMA150 signal closes the grid and returns the capital to the standard asset strategy.
+
+{gtable}
+
+The grid reduced drawdown relative to independent SMA150, but in this five-year sample it also reduced terminal value. This result is sensitive to the range, number of levels, fill assumptions and the treatment of a breakout.
+
 ## Files and reproducibility
 
 - `backtest_market.py` — downloader, simulator, metrics and CSV export.
 - `make_outputs.py` — Matplotlib/Seaborn PNGs and GIF.
-- `tests/test_market_extension.py` — eight automated checks; latest run: **8 passed**.
+- `tests/test_market_extension.py` — nine automated checks; latest run: **9 passed**.
 - `data/` — downloaded stock/ETF OHLC and the used market files.
 - `results/market_comparison_summary.csv` — machine-readable main table.
 - `results/period_start_comparison.csv` — start-date robustness.
