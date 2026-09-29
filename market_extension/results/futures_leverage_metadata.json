@@ -1,0 +1,10 @@
+{
+  "generated_utc": "2026-09-29T04:24:48.548459+00:00",
+  "leverage": 5.0,
+  "fee": 0.001,
+  "slippage": 0.0005,
+  "maintenance_margin_rate": 0.005,
+  "funding_source": "Binance USD-M futures fundingRate endpoint, aggregated by UTC day",
+  "liquidation": "simplified isolated-margin liquidation when low-price equity falls below maintenance margin",
+  "inj_contract_start": "2022-08-17; BTC/SOL/INJ cannot be tested from 2021 without a spot proxy"
+}
