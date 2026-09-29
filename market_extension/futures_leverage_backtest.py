@@ -64,10 +64,49 @@ def run(name,symbols,weights,start):
     d=pd.DataFrame(rows,columns=['date','equity','deposit','twr','drawdown','margin']).set_index('date'); t=pd.DataFrame(trades,columns=['date','asset','side','qty','price','notional','fee','kind']); m={'portfolio':name,'start':start.date(),'end':cal[-1].date(),'contributions':d.deposit.sum(),'final_value':d.equity.iloc[-1],'return_pct':d.equity.iloc[-1]/d.deposit.sum()-1,'max_drawdown':d.drawdown.min(),'fees':t.fee.sum(),'slippage':slippage_cash,'funding_cashflow':funding_cash,'trades':len(t),'liquidations':int(t.side.eq('LIQUIDATION').sum()),'btc_eth_note':'5x isolated; funding aggregated from 8-hour prints to daily bars'}
     return d,t,m
 
+def run_atr(name,symbols,weights,start,sl_atr=2.,tp_atr=4.):
+    prices={s:get_klines(s,start) for s in symbols}; funding={s:get_funding(s,start) for s in symbols}; cal=prices[symbols[0]].index
+    for s in symbols: cal=cal.intersection(prices[s].index)
+    cal=cal[(cal>=start)&(cal<=END)]; due=month_dates(cal); state={}
+    atr={}
+    for s in symbols:
+        p=prices[s]; tr=pd.concat([p.high-p.low,(p.high-p.close.shift(1)).abs(),(p.low-p.close.shift(1)).abs()],axis=1).max(axis=1); atr[s]=tr.ewm(alpha=1/14,adjust=False,min_periods=14).mean(); state[s]={'qty':0.,'entry':0.,'margin':0.,'tp':np.nan,'sl':np.nan,'blocked':False,'liquidations':0}
+    rows=[]; trades=[]; funding_cash=0.; slippage_cash=0.; prev=0.; tw=1.; peak=1.
+    for dt in cal:
+        for s in symbols:
+            p=prices[s]; pos=p.index.get_loc(dt); sma=p.close.rolling(150).mean(); pidx=pos-1; bull=bool(pidx>=0 and pd.notna(sma.iloc[pidx]) and p.close.iloc[pidx]>sma.iloc[pidx]); prev_bull=bool(pidx>=1 and pd.notna(sma.iloc[pidx-1]) and p.close.iloc[pidx-1]>sma.iloc[pidx-1]); z=state[s]
+            if dt in due: z['margin']+=100*weights[s]
+            fr=funding[s].loc[(funding[s].index>=dt)&(funding[s].index<dt+pd.Timedelta(days=1))].fundingRate
+            if z['qty']>0 and len(fr):
+                flow=z['qty']*float(p.close.loc[dt])*fr.sum(); z['margin']-=flow; funding_cash+=flow
+            # SMA regime exit at the next session open has priority over
+            # intraday TP/SL when the previous close is bearish.
+            if z['qty']>0 and not bull:
+                px=float(p.open.loc[dt])*(1-SLIP); pnl=z['qty']*(px-z['entry']); notional=z['qty']*px; fee=notional*FEE; z['margin']+=pnl-fee; slippage_cash+=z['qty']*float(p.open.loc[dt])*SLIP; trades.append([dt,s,'SMA_CLOSE',z['qty'],px,notional,fee,'sma']); z['qty']=0.; z['entry']=0.; z['tp']=np.nan; z['sl']=np.nan
+            elif z['qty']>0:
+                low=float(p.low.loc[dt]); high=float(p.high.loc[dt]); liq=(z['qty']*z['entry']-z['margin'])/(z['qty']*(1-MMR)); hit_sl=low<=z['sl']; hit_tp=high>=z['tp']
+                if liq>0 and low<=liq and not (hit_sl and z['sl']>liq):
+                    trades.append([dt,s,'LIQUIDATION',z['qty'],liq,0.,0.,'liquidation']); z['qty']=0.; z['entry']=0.; z['margin']=0.; z['tp']=np.nan; z['sl']=np.nan; z['liquidations']+=1
+                elif hit_sl: 
+                    px=z['sl']*(1-SLIP); pnl=z['qty']*(px-z['entry']); notional=z['qty']*px; fee=notional*FEE; slippage_cash+=z['qty']*z['sl']*SLIP; z['margin']+=pnl-fee; trades.append([dt,s,'SL',z['qty'],px,notional,fee,'sl']); z['qty']=0.; z['entry']=0.; z['tp']=np.nan; z['sl']=np.nan; z['blocked']=True
+                elif hit_tp:
+                    px=z['tp']*(1-SLIP); pnl=z['qty']*(px-z['entry']); notional=z['qty']*px; fee=notional*FEE; slippage_cash+=z['qty']*z['tp']*SLIP; z['margin']+=pnl-fee; trades.append([dt,s,'TP',z['qty'],px,notional,fee,'tp']); z['qty']=0.; z['entry']=0.; z['tp']=np.nan; z['sl']=np.nan; z['blocked']=True
+            if z['qty']==0 and bull and z['margin']>0 and (not z['blocked'] or (bull and not prev_bull)):
+                px=float(p.open.loc[dt])*(1+SLIP); margin=z['margin']; notional=margin*LEV; fee=notional*FEE; q=notional/px; z['margin']-=fee; z['qty']=q; z['entry']=px; a=float(atr[s].iloc[pidx]); z['sl']=px-sl_atr*a; z['tp']=px+tp_atr*a; slippage_cash+=q*float(p.open.loc[dt])*SLIP; trades.append([dt,s,'OPEN',q,px,notional,fee,'sma_entry']); z['blocked']=False
+            elif z['qty']>0 and bull and dt in due:
+                px=float(p.open.loc[dt])*(1+SLIP); margin=z['margin']; notional=margin*LEV; fee=notional*FEE; q=notional/px; old=z['qty']; z['margin']-=fee; z['qty']+=q; z['entry']=(old*z['entry']+q*px)/z['qty']; a=float(atr[s].iloc[pidx]); z['sl']=z['entry']-sl_atr*a; z['tp']=z['entry']+tp_atr*a; slippage_cash+=q*float(p.open.loc[dt])*SLIP; trades.append([dt,s,'ADD',q,px,notional,fee,'sma_entry'])
+        equity=sum(state[s]['margin']+state[s]['qty']*(prices[s].close.loc[dt]-state[s]['entry']) for s in symbols); dep=100. if dt in due else 0.; ret=(equity-dep)/prev-1 if prev>0 else 0.; tw*=1+ret; peak=max(peak,tw); rows.append([dt,equity,dep,tw,tw/peak-1,sum(state[s]['margin'] for s in symbols)]); prev=equity
+    d=pd.DataFrame(rows,columns=['date','equity','deposit','twr','drawdown','margin']).set_index('date'); t=pd.DataFrame(trades,columns=['date','asset','side','qty','price','notional','fee','kind']); m={'portfolio':name,'start':start.date(),'end':cal[-1].date(),'contributions':d.deposit.sum(),'final_value':d.equity.iloc[-1],'return_pct':d.equity.iloc[-1]/d.deposit.sum()-1,'max_drawdown':d.drawdown.min(),'fees':t.fee.sum(),'slippage':slippage_cash,'funding_cashflow':funding_cash,'trades':len(t),'liquidations':int(t.side.eq('LIQUIDATION').sum()),'sl_atr':sl_atr,'tp_atr':tp_atr,'note':'5x isolated; TP/SL on daily OHLC; SL assumed first if TP and SL both touched'}
+    return d,t,m
+
 def main():
     rows=[]
     specs=[('BTC_ETH_5x_SMA150',['BTCUSDT','ETHUSDT'],{'BTCUSDT':.6,'ETHUSDT':.4},START),('BTC_SOL_INJ_5x_SMA150',['BTCUSDT','SOLUSDT','INJUSDT'],{'BTCUSDT':.5,'SOLUSDT':.3,'INJUSDT':.2},pd.Timestamp('2022-08-17',tz='UTC'))]
     for name,symbols,w,start in specs:
         d,t,m=run(name,symbols,w,start); d.to_csv(RES/f'futures_equity_{name}.csv'); t.to_csv(RES/f'futures_trades_{name}.csv',index=False); rows.append(m)
-    out=pd.DataFrame(rows); out.to_csv(RES/'futures_leverage_summary.csv',index=False); (RES/'futures_leverage_metadata.json').write_text(__import__('json').dumps({'generated_utc':datetime.now(timezone.utc).isoformat(),'leverage':LEV,'fee':FEE,'slippage':SLIP,'maintenance_margin_rate':MMR,'funding_source':'Binance USD-M futures fundingRate endpoint, aggregated by UTC day','liquidation':'simplified isolated-margin liquidation when low-price equity falls below maintenance margin','inj_contract_start':'2022-08-17; BTC/SOL/INJ cannot be tested from 2021 without a spot proxy'},indent=2)); print(out.to_string(index=False))
+    out=pd.DataFrame(rows); out.to_csv(RES/'futures_leverage_summary.csv',index=False); (RES/'futures_leverage_metadata.json').write_text(__import__('json').dumps({'generated_utc':datetime.now(timezone.utc).isoformat(),'leverage':LEV,'fee':FEE,'slippage':SLIP,'maintenance_margin_rate':MMR,'funding_source':'Binance USD-M futures fundingRate endpoint, aggregated by UTC day','liquidation':'simplified isolated-margin liquidation when low-price equity falls below maintenance margin','inj_contract_start':'2022-08-17; BTC/SOL/INJ cannot be tested from 2021 without a spot proxy','atr_test':'ATR14 with SL=2x ATR and TP=4x ATR; daily OHLC ambiguity resolved conservatively by assuming SL first'} ,indent=2)); print(out.to_string(index=False))
+    atr_rows=[]
+    for name,symbols,w,start in specs:
+        label=name+'_ATR2x4x'; d,t,m=run_atr(label,symbols,w,start); d.to_csv(RES/f'futures_equity_{label}.csv'); t.to_csv(RES/f'futures_trades_{label}.csv',index=False); atr_rows.append(m)
+    pd.DataFrame(atr_rows).to_csv(RES/'futures_atr_tp_sl_summary.csv',index=False); print(pd.DataFrame(atr_rows).to_string(index=False))
 if __name__=='__main__': main()
